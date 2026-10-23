@@ -45,7 +45,13 @@ public enum AndroidBridge {
 
         for device in AndroidDevices.parse(devicesResult.output)
             where device.serial.hasPrefix("emulator-") && device.state == "device" {
-            let name = try ProcessRunner.run(adb, ["-s", device.serial, "emu", "avd", "name"])
+            // The emulator console command (`emu avd name`) can take around 30 seconds
+            // to close its connection. The boot property contains the same AVD name and
+            // returns immediately.
+            let name = try ProcessRunner.run(
+                adb,
+                ["-s", device.serial, "shell", "getprop", "ro.boot.qemu.avd_name"]
+            )
             guard name.status == 0,
                   name.output.trimmingCharacters(in: .whitespacesAndNewlines) == ToolConfiguration.avdName else { continue }
 
