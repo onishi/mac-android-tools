@@ -40,25 +40,23 @@ private final class KeyboardController {
         return true
     }
 
-    func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    /// Returns true when the key event was forwarded to Android and should be swallowed.
+    func handle(type: CGEventType, keyCode: Int64) -> Bool {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
-            return Unmanaged.passUnretained(event)
+            return false
         }
-        guard isEnabled, type == .keyDown, isAndroidEmulatorFrontmost else {
-            return Unmanaged.passUnretained(event)
-        }
+        guard isEnabled, type == .keyDown, isAndroidEmulatorFrontmost else { return false }
 
-        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         if keyCode == macEisuKeyCode {
             sendAndroidKey(androidEisuKeyCode)
-            return nil
+            return true
         }
         if keyCode == macKanaKeyCode {
             sendAndroidKey(androidKanaKeyCode)
-            return nil
+            return true
         }
-        return Unmanaged.passUnretained(event)
+        return false
     }
 
     private var isAndroidEmulatorFrontmost: Bool {
@@ -81,14 +79,22 @@ private final class KeyboardController {
     }
 }
 
-private func eventTapCallback(
+// The tap is added to the main run loop, so the callback always runs on the main thread.
+private nonisolated func eventTapCallback(
     proxy: CGEventTapProxy,
     type: CGEventType,
     event: CGEvent,
     refcon: UnsafeMutableRawPointer?
 ) -> Unmanaged<CGEvent>? {
     guard let refcon else { return Unmanaged.passUnretained(event) }
-    return Unmanaged<KeyboardController>.fromOpaque(refcon).takeUnretainedValue().handle(type: type, event: event)
+    let controllerAddress = UInt(bitPattern: refcon)
+    let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+    let consumed = MainActor.assumeIsolated {
+        let controller = UnsafeMutableRawPointer(bitPattern: controllerAddress)
+            .map { Unmanaged<KeyboardController>.fromOpaque($0).takeUnretainedValue() }
+        return controller?.handle(type: type, keyCode: keyCode) ?? false
+    }
+    return consumed ? nil : Unmanaged.passUnretained(event)
 }
 
 private extension Notification.Name {
@@ -112,7 +118,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         refreshPermissionState(prompt: true)
         permissionTimer = .scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            self?.refreshPermissionState(prompt: false)
+            MainActor.assumeIsolated { self?.refreshPermissionState(prompt: false) }
         }
     }
 
@@ -149,7 +155,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func refreshPermissionState(prompt: Bool) {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: prompt] as CFDictionary
+        // String value of kAXTrustedCheckOptionPrompt; the global itself is not concurrency-safe.
+        let options = ["AXTrustedCheckOptionPrompt": prompt] as CFDictionary
         let trusted = AXIsProcessTrustedWithOptions(options)
         let active = trusted && keyboardController.startEventTap()
         stateItem.title = active ? "キー転送: 利用可能" : "アクセシビリティ権限が必要です"
