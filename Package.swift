@@ -1,6 +1,9 @@
-// swift-tools-version: 5.10
+// swift-tools-version: 6.2
 
 import PackageDescription
+
+// AppKit apps: run UI code on the main actor by default.
+let appSettings: [SwiftSetting] = [.defaultIsolation(MainActor.self)]
 
 let package = Package(
     name: "mac-android-tools",
@@ -12,9 +15,21 @@ let package = Package(
     ],
     targets: [
         .target(name: "AndroidToolsCore"),
-        .executableTarget(name: "AndroidTablet", dependencies: ["AndroidToolsCore"]),
-        .executableTarget(name: "AndroidJapaneseSwitch", dependencies: ["AndroidToolsCore"]),
-        .executableTarget(name: "SendClipboardImage", dependencies: ["AndroidToolsCore"]),
+        .executableTarget(
+            name: "AndroidTablet",
+            dependencies: ["AndroidToolsCore"],
+            swiftSettings: appSettings
+        ),
+        .executableTarget(
+            name: "AndroidJapaneseSwitch",
+            dependencies: ["AndroidToolsCore"],
+            swiftSettings: appSettings
+        ),
+        .executableTarget(
+            name: "SendClipboardImage",
+            dependencies: ["AndroidToolsCore"],
+            swiftSettings: appSettings
+        ),
         .testTarget(name: "AndroidToolsCoreTests", dependencies: ["AndroidToolsCore"]),
     ]
 )

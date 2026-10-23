@@ -19,3 +19,6 @@ for name in "${app_names[@]}"; do
   ditto "$source_app" "$target_app"
   echo "Installed $target_app"
 done
+
+"$install_dir/画像をAndroidへ送る.app/Contents/MacOS/SendClipboardImage" --register-services
+echo "Updated macOS Services"
